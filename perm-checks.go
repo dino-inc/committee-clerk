@@ -32,11 +32,35 @@ func doesMemberHaveRole(member *discordgo.Member, testRole string) bool {
 }
 
 // Return true if the author has the specified role.
-func doeAuthorHaveRole(s *discordgo.Session, source *discordgo.MessageCreate, testRole string) (bool, error) {
+func checkAuthorHasRole(s *discordgo.Session, source *discordgo.MessageCreate, testRole string) (bool, error) {
 	member, err := s.GuildMember(source.GuildID, source.Author.ID)
 	if err != nil {
 		return false, err
 	}
 
-	return doesMemberHaveRole(member, testRole), nil
+	ok := doesMemberHaveRole(member, testRole)
+	if !ok {
+		// Print error Message
+		var role *discordgo.Role
+		role, err = s.State.Role(source.GuildID, testRole)
+		if err != nil {
+			return ok, err
+		}
+
+		_, err = s.ChannelMessageSend(source.ChannelID, "You must be a "+role.Name)
+	}
+
+	return ok, err
+}
+
+// Return true if the author is a Speaker
+func checkAuthorIsSpeaker(s *discordgo.Session, m *discordgo.MessageCreate) (bool, error) {
+	chamber, ok := Chambers[m.ChannelID]
+	if !ok {
+		_, err := s.ChannelMessageSend(m.ChannelID, MSG_NOT_A_CHAMBER)
+		return false, err
+	}
+
+	// Check if sender is a chamber speaker
+	return checkAuthorHasRole(s, m, chamber.SpeakerRole)
 }

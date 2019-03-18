@@ -151,7 +151,7 @@ func removeChamber(s *discordgo.Session, m *discordgo.MessageCreate) error {
 	log.Println("Removed chamber", "#"+ch.Name)
 
 	// React with OK.
-	err = s.MessageReactionAdd(m.ChannelID, m.ID, REACT_OK)
+	err := s.MessageReactionAdd(m.ChannelID, m.ID, REACT_OK)
 	return err
 }
 

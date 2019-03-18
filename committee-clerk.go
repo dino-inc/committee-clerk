@@ -38,9 +38,9 @@ type AuthSettings struct {
 type Handler func(*discordgo.Session, *discordgo.MessageCreate) error
 
 type Await struct {
-	handler Handler
-	id      string // Identifies the type of await it is.
-	adderr  string // Error to say if an await tries to replace this one
+	Handler Handler
+	ID      string // Identifies the type of await it is.
+	AddErr  string // Error to say if an await tries to replace this one
 }
 
 type Command struct {
@@ -56,11 +56,6 @@ type Chamber struct {
 }
 
 var (
-	CMD_PING = Command{
-		Handler: ping,
-		Summary: "Ping the current bot",
-		Usage:   "",
-	}
 	CMD_HELP = Command{
 		Handler: help,
 		Summary: "Show a list of all commands available or displays help for a specific command",
@@ -84,11 +79,12 @@ func addAwait(channelID string, s *discordgo.Session, await Await) (bool, error)
 	if prev, exists := Awaits[channelID]; exists {
 		// Await already exists for channel; handle appropriately.
 
-		_, err := s.ChannelMessageSend(channelID, prev.adderr)
+		_, err := s.ChannelMessageSend(channelID, prev.AddErr)
 		return false, err
 	}
 
 	Awaits[channelID] = await
+	log.Println("Added await '" + await.ID + "'")
 	return true, nil
 }
 
@@ -100,11 +96,12 @@ func removeAwait(channelID string, id string) bool {
 	if !exists {
 		// No await exists.
 		return false
-	} else if await.id != id {
+	} else if await.ID != id {
 		// ID doesn't match.
 		return false
 	} else {
 		delete(Awaits, channelID)
+		log.Println("Removed await '" + await.ID + "'")
 		return true
 	}
 }
@@ -145,14 +142,16 @@ func main() {
 	dg.AddHandler(messageCreate)
 
 	// Add commands
-	addCommand("ping", CMD_PING)
-	addCommand("list", CMD_LIST)
+	addCommand("help", CMD_HELP)
 
 	addCommand("addchamber", CMD_ADD_CHAMBER)
 	addCommand("removechamber", CMD_REMOVE_CHAMBER)
-	addCommand("help", CMD_HELP)
+	addCommand("list", CMD_LIST)
 	addCommand("add", CMD_ADD)
 	addCommand("remove", CMD_REMOVE)
+
+	addCommand("ping", CMD_PING)
+	addCommand("unanimous", CMD_UNANIMOUS)
 
 	// Start the bot
 	if err = dg.Open(); err != nil {
@@ -175,6 +174,23 @@ func main() {
 	}
 }
 
+// Return the command parsed from a string if it exists
+func getCommand(content string) (Command, bool) {
+	cmdstr := strings.Split(content, " ")[0]
+	if len(cmdstr) <= len(PREFIX) {
+		return Command{}, false
+	}
+
+	if cmdstr[:len(PREFIX)] == PREFIX {
+		cmdstr = cmdstr[len(PREFIX):]
+	} else {
+		return Command{}, false
+	}
+
+	cmd, ok := Commands[cmdstr]
+	return cmd, ok
+}
+
 // Called every time a new message appears.
 func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	// Ignore all messages made any bots.
@@ -182,52 +198,35 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		return
 	}
 
-	cmdstr := strings.Split(m.Content, " ")[0]
+	if cmd, ok := getCommand(m.Content); ok {
+		// It's a valid command
 
-	// Take out the command prefix and break early if it's not present.
-	if len(cmdstr) <= len(PREFIX) {
-		return
-	}
+		if ch, err := s.Channel(m.ChannelID); err == nil {
+			log.Println(m.Author, "from", "#"+ch.Name, "sent command", m.Content)
+		} else {
+			// This logically shouldn't happen, but just in case!
+			log.Println(m.Author, "sent command", m.Content)
+		}
 
-	if cmdstr[:len(PREFIX)] == PREFIX {
-		// Prefix matches; it's a command.
-		cmdstr = cmdstr[len(PREFIX):]
+		// Send data to command handler
+		if err := cmd.Handler(s, m); err != nil {
+			log.Println("Error processing command:", err)
+		}
 	} else if await, ok := Awaits[m.ChannelID]; ok {
 		// Not a command; redirect message to channel's await if it exists.
 
-		if ch, err := s.Channel(m.ChannelID); err != nil {
+		if ch, err := s.Channel(m.ChannelID); err == nil {
 			log.Println(m.Author, "triggered await in #"+ch.Name)
 		} else {
 			log.Println(m.Author, "triggered await in channel", m.ChannelID)
 		}
 
-		if err := await.handler(s, m); err != nil {
+		if err := await.Handler(s, m); err != nil {
 			log.Println("Error for await:", err)
 		}
 
 		return
 	}
-
-	if ch, err := s.Channel(m.ChannelID); err != nil {
-		log.Println(m.Author, "sent command", m.Content)
-	} else {
-		// This logically shouldn't happen, but just in case!
-		log.Println(m.Author, "from", "#"+ch.Name, "sent command", m.Content)
-	}
-
-	if cmd, ok := Commands[cmdstr]; ok {
-		// Redirect data to command handler when appropriate
-		if err := cmd.Handler(s, m); err != nil {
-			log.Println("Error processing command:", err)
-		}
-	} else {
-		log.Println("Command '" + cmdstr + "' doesn't exist")
-	}
-}
-
-func ping(s *discordgo.Session, m *discordgo.MessageCreate) error {
-	_, err := s.ChannelMessageSend(m.ChannelID, "Pong!")
-	return err
 }
 
 func help(s *discordgo.Session, m *discordgo.MessageCreate) error {
