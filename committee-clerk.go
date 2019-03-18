@@ -146,10 +146,13 @@ func main() {
 
 	// Add commands
 	addCommand("ping", CMD_PING)
+	addCommand("list", CMD_LIST)
+
 	addCommand("addchamber", CMD_ADD_CHAMBER)
 	addCommand("removechamber", CMD_REMOVE_CHAMBER)
-	addCommand("list", CMD_LIST)
 	addCommand("help", CMD_HELP)
+	addCommand("add", CMD_ADD)
+	addCommand("remove", CMD_REMOVE)
 
 	// Start the bot
 	if err = dg.Open(); err != nil {

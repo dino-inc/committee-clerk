@@ -29,6 +29,16 @@ var (
 		Summary: "List all members in the channel's chamber",
 		Usage:   "",
 	}
+	CMD_ADD = Command{
+		Handler: add,
+		Summary: "Add one or more members to the thot chamber",
+		Usage:   "[member] ...",
+	}
+	CMD_REMOVE = Command{
+		Handler: remove,
+		Summary: "Remove one or more members from the thot chamber",
+		Usage:   "[member] ...",
+	}
 )
 
 func isChamber(channelID string) bool {
@@ -82,18 +92,12 @@ func saveChambers() error {
 
 // Set up a chamber for the current channel.
 func addChamber(s *discordgo.Session, m *discordgo.MessageCreate) error {
-	args := strings.Split(m.Content, " ")
-
 	// Check if they can manage channels first.
-	ok, err := canAuthorManageChannels(s, m)
-	if err != nil {
-		return err
-	}
-	if !ok {
-		_, err := s.ChannelMessageSend(m.ChannelID, "You must Manage Channels to do that!")
+	if ok, err := checkAuthorCanManageChannels(s, m); !ok {
 		return err
 	}
 
+	args := strings.Split(m.Content, " ")
 	if len(args) < 3 {
 		_, err := s.ChannelMessageSend(m.ChannelID, MSG_TOO_FEW_ARGS)
 		return err
@@ -127,19 +131,14 @@ func addChamber(s *discordgo.Session, m *discordgo.MessageCreate) error {
 	log.Println("Added chamber", "#"+ch.Name)
 
 	// React with OK.
-	err = s.MessageReactionAdd(m.ChannelID, m.ID, REACT_OK)
+	err := s.MessageReactionAdd(m.ChannelID, m.ID, REACT_OK)
 	return err
 }
 
 // Remove the chamber from the current channel.
 func removeChamber(s *discordgo.Session, m *discordgo.MessageCreate) error {
 	// Check if they can manage channels first.
-	ok, err := canAuthorManageChannels(s, m)
-	if err != nil {
-		return err
-	}
-	if !ok {
-		_, err := s.ChannelMessageSend(m.ChannelID, "You must Manage Channels to do that!")
+	if ok, err := checkAuthorCanManageChannels(s, m); !ok {
 		return err
 	}
 
@@ -211,5 +210,75 @@ func list(s *discordgo.Session, m *discordgo.MessageCreate) error {
 	}
 
 	_, err = s.ChannelMessageSend(m.ChannelID, message)
+	return err
+}
+
+// Add members to the thot chamber.
+func add(s *discordgo.Session, m *discordgo.MessageCreate) error {
+	// Double-check that the author can manage channels
+	if ok, err := checkAuthorCanManageChannels(s, m); !ok {
+		return err
+	}
+
+	if len(m.Mentions) == 0 {
+		_, err := s.ChannelMessageSend(m.ChannelID, MSG_TOO_FEW_ARGS)
+		return err
+	}
+
+	// Get chamber data and exit early if channel not a chamber.
+	chamber, ok := Chambers[m.ChannelID]
+	if !ok {
+		_, err := s.ChannelMessageSend(m.ChannelID, MSG_NOT_A_CHAMBER)
+		return err
+	}
+
+	// Add users and build the end response.
+	response := ""
+	for _, user := range m.Mentions {
+		err := s.GuildMemberRoleAdd(m.GuildID, user.ID, chamber.MemberRole)
+		if err != nil {
+			return err
+		}
+
+		response += "Added " + user.Username + " to the chamber.\n"
+	}
+
+	// Send response and exit
+	_, err := s.ChannelMessageSend(m.ChannelID, response)
+	return err
+}
+
+// Remove members from the thot chamber.
+func remove(s *discordgo.Session, m *discordgo.MessageCreate) error {
+	// First check if the user has permissions.
+	if ok, err := checkAuthorCanManageChannels(s, m); !ok {
+		return err
+	}
+
+	if len(m.Mentions) == 0 {
+		_, err := s.ChannelMessageSend(m.ChannelID, MSG_TOO_FEW_ARGS)
+		return err
+	}
+
+	// Get chamber data and exit early if channel is not a chamber.
+	chamber, ok := Chambers[m.ChannelID]
+	if !ok {
+		_, err := s.ChannelMessageSend(m.ChannelID, MSG_NOT_A_CHAMBER)
+		return err
+	}
+
+	// Remove users and build the end response.
+	response := ""
+	for _, user := range m.Mentions {
+		err := s.GuildMemberRoleRemove(m.GuildID, user.ID, chamber.MemberRole)
+		if err != nil {
+			return err
+		}
+
+		response += "Removed " + user.Username + " from the chamber.\n"
+	}
+
+	// Send response and exit.
+	_, err := s.ChannelMessageSend(m.ChannelID, response)
 	return err
 }

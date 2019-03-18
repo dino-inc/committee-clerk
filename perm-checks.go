@@ -3,7 +3,7 @@ package main
 import "github.com/bwmarrin/discordgo"
 
 // Return true if the author can manage channels.
-func canAuthorManageChannels(s *discordgo.Session, source *discordgo.MessageCreate) (bool, error) {
+func checkAuthorCanManageChannels(s *discordgo.Session, source *discordgo.MessageCreate) (bool, error) {
 	authorID := source.Author.ID
 	channelID := source.ChannelID
 
@@ -13,7 +13,11 @@ func canAuthorManageChannels(s *discordgo.Session, source *discordgo.MessageCrea
 	}
 
 	ok := perms&discordgo.PermissionManageChannels == discordgo.PermissionManageChannels
-	return ok, nil
+	if !ok {
+		_, err = s.ChannelMessageSend(source.ChannelID, MSG_MUST_MANAGE_CHANNELS)
+	}
+
+	return ok, err
 }
 
 // Return true if the member has the specified role.
@@ -28,7 +32,7 @@ func doesMemberHaveRole(member *discordgo.Member, testRole string) bool {
 }
 
 // Return true if the author has the specified role.
-func doesAuthorHaveRole(s *discordgo.Session, source *discordgo.MessageCreate, testRole string) (bool, error) {
+func doeAuthorHaveRole(s *discordgo.Session, source *discordgo.MessageCreate, testRole string) (bool, error) {
 	member, err := s.GuildMember(source.GuildID, source.Author.ID)
 	if err != nil {
 		return false, err
