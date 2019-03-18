@@ -22,12 +22,10 @@ var (
 	CMD_REMOVE_CHAMBER = Command{
 		Handler: removeChamber,
 		Summary: "Remove the current channel's chamber",
-		Usage:   "",
 	}
 	CMD_LIST = Command{
 		Handler: list,
 		Summary: "List all members in the channel's chamber",
-		Usage:   "",
 	}
 	CMD_ADD = Command{
 		Handler: add,

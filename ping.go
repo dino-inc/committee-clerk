@@ -16,7 +16,6 @@ var (
 	CMD_PING = Command{
 		Handler: cmdPing,
 		Summary: "Ping the chamber",
-		Usage:   "",
 	}
 	CMD_UNANIMOUS = Command{
 		Handler: unanimous,

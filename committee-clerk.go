@@ -153,6 +153,10 @@ func main() {
 	addCommand("ping", CMD_PING)
 	addCommand("unanimous", CMD_UNANIMOUS)
 
+	addCommand("convene", CMD_CONVENE)
+	addCommand("dismiss", CMD_DISMISS)
+	addCommand("adjournsinedie", CMD_ADJOURNSINEDIE)
+
 	// Start the bot
 	if err = dg.Open(); err != nil {
 		log.Fatal("error opening connection,", err)
