@@ -19,15 +19,59 @@ type AuthSettings struct {
 	ClientID int
 }
 
-type Command func(*discordgo.Session, *discordgo.MessageCreate) error
+type Handler func(*discordgo.Session, *discordgo.MessageCreate) error
+
+type Await struct {
+	handler Handler
+	id      string // Identifies the type of await it is.
+	adderr  string // Error to say if an await tries to replace this one
+}
+
+type Command struct {
+	handler Handler
+	summary string
+	details string
+}
 
 // Configuration
 const Prefix = ";"
 
-var Commands map[string]Command = make(map[string]Command)
+var Commands = make(map[string]Command)
+var Awaits = make(map[string]Await)
 
 func addCommand(name string, cmd Command) {
 	Commands[Prefix+name] = cmd
+}
+
+// Attempt to attach an await to the channel. Return whether
+// successful.
+func addAwait(channelID string, s *discordgo.Session, await Await) (bool, error) {
+	if prev, exists := Awaits[channelID]; exists {
+		// Await already exists for channel; handle appropriately.
+
+		_, err := s.ChannelMessageSend(channelID, prev.adderr)
+		return false, err
+	}
+
+	Awaits[channelID] = await
+	return true, nil
+}
+
+// Remove any attached await from the channel if the id
+// matches. Return if removed.
+func removeAwait(channelID string, id string) bool {
+	await, exists := Awaits[channelID]
+
+	if !exists {
+		// No await exists.
+		return false
+	} else if await.id != id {
+		// ID doesn't match.
+		return false
+	} else {
+		delete(Awaits, channelID)
+		return true
+	}
 }
 
 func main() {
@@ -53,7 +97,9 @@ func main() {
 	dg.AddHandler(messageCreate)
 
 	// Add commands
-	addCommand("ping", ping)
+	addCommand("ping", Command{handler: ping})
+	addCommand("startecho", Command{handler: startEcho})
+	addCommand("endecho", Command{handler: endEcho})
 
 	// Start the bot
 	if err = dg.Open(); err != nil {
@@ -86,17 +132,29 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	cmdstr := strings.Split(m.Content, " ")[0]
 
 	if cmd, ok := Commands[cmdstr]; ok {
-		ch, err := s.Channel(m.ChannelID)
+		// Redirect data to command handler when appropriate
 
-		if err != nil {
+		if ch, err := s.Channel(m.ChannelID); err != nil {
 			log.Println(m.Author, "sent command", m.Content)
 		} else {
 			// This logically shouldn't happen, but just in case!
 			log.Println(m.Author, "from", "#"+ch.Name, "sent command", m.Content)
 		}
 
-		if err := cmd(s, m); err != nil {
-			log.Println("Error:", err)
+		if err := cmd.handler(s, m); err != nil {
+			log.Println("Error processing command:", err)
+		}
+	} else if await, ok := Awaits[m.ChannelID]; ok {
+		// Redirect data to handler to await if it exists and not a command.
+
+		if ch, err := s.Channel(m.ChannelID); err != nil {
+			log.Println(m.Author, "triggered await in #"+ch.Name)
+		} else {
+			log.Println(m.Author, "triggered await in channel", m.ChannelID)
+		}
+
+		if err := await.handler(s, m); err != nil {
+			log.Println("Error for await:", err)
 		}
 	}
 }
