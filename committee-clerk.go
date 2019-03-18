@@ -33,12 +33,28 @@ type Command struct {
 	details string
 }
 
-// Configuration
-const Prefix = ";"
+type Chamber struct {
+	MemberRole  string `json:"member"`
+	SpeakerRole string `json:"speaker"`
+	ApiName     string `json:"apiname"`
+}
 
+// Configuration
+const (
+	Prefix = ";"
+
+	CHAMBER_PATH = "chambers.json"
+	AUTH_PATH    = "auth.json"
+
+	REACT_OK = "\u2705"
+)
+
+// State
 var Commands = make(map[string]Command)
 var Awaits = make(map[string]Await)
+var Chambers map[string]Chamber
 
+// Add a command to the bot.
 func addCommand(name string, cmd Command) {
 	Commands[Prefix+name] = cmd
 }
@@ -74,17 +90,30 @@ func removeAwait(channelID string, id string) bool {
 	}
 }
 
-func main() {
-	// Decode auth.json and store it in the appropriate struct.
-	file, err := os.Open("auth.json")
-	var auth AuthSettings
-
+// Decode the given JSON file and store it in the appropriate data
+// structure.
+func loadSettings(dest interface{}, src string) error {
+	file, err := os.Open(src)
 	if err != nil {
+		return err
+	}
+	dec := json.NewDecoder(file)
+	if err := dec.Decode(dest); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func main() {
+	// Load the chamber data.
+	if err := loadSettings(&Chambers, CHAMBER_PATH); err != nil {
 		log.Fatal(err)
 	}
 
-	dec := json.NewDecoder(file)
-	if err := dec.Decode(&auth); err != nil {
+	// Load auth settings.
+	var auth AuthSettings
+	if err := loadSettings(&auth, AUTH_PATH); err != nil {
 		log.Fatal(err)
 	}
 
@@ -98,8 +127,9 @@ func main() {
 
 	// Add commands
 	addCommand("ping", Command{handler: ping})
-	addCommand("startecho", Command{handler: startEcho})
-	addCommand("endecho", Command{handler: endEcho})
+	addCommand("addchamber", Command{handler: addChamber})
+	addCommand("removechamber", Command{handler: removeChamber})
+	addCommand("list", Command{handler: list})
 
 	// Start the bot
 	if err = dg.Open(); err != nil {
