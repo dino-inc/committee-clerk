@@ -13,6 +13,22 @@ import (
 	"syscall"
 )
 
+// Configuration
+const (
+	PREFIX = ";"
+
+	CHAMBER_PATH = "chambers.json"
+	AUTH_PATH    = "auth.json"
+
+	REACT_OK = "\u2705"
+
+	MSG_TOO_MANY_ARGS        = "Too many arguments."
+	MSG_TOO_FEW_ARGS         = "Too few arguments."
+	MSG_BAD_ARGS             = "Invalid arguments."
+	MSG_MUST_MANAGE_CHANNELS = "You need permission to Manage Channels to do that."
+	MSG_NOT_A_CHAMBER        = "No chamber is set up for this channel."
+)
+
 // Provided by auth.json
 type AuthSettings struct {
 	Token    string
@@ -28,9 +44,9 @@ type Await struct {
 }
 
 type Command struct {
-	handler Handler
-	summary string
-	details string
+	Handler Handler
+	Summary string
+	Usage   string
 }
 
 type Chamber struct {
@@ -39,14 +55,17 @@ type Chamber struct {
 	ApiName     string `json:"apiname"`
 }
 
-// Configuration
-const (
-	Prefix = ";"
-
-	CHAMBER_PATH = "chambers.json"
-	AUTH_PATH    = "auth.json"
-
-	REACT_OK = "\u2705"
+var (
+	CMD_PING = Command{
+		Handler: ping,
+		Summary: "Ping the current bot",
+		Usage:   "",
+	}
+	CMD_HELP = Command{
+		Handler: help,
+		Summary: "Show a list of all commands available or displays help for a specific command",
+		Usage:   "[command name]",
+	}
 )
 
 // State
@@ -56,7 +75,7 @@ var Chambers map[string]Chamber
 
 // Add a command to the bot.
 func addCommand(name string, cmd Command) {
-	Commands[Prefix+name] = cmd
+	Commands[name] = cmd
 }
 
 // Attempt to attach an await to the channel. Return whether
@@ -126,10 +145,11 @@ func main() {
 	dg.AddHandler(messageCreate)
 
 	// Add commands
-	addCommand("ping", Command{handler: ping})
-	addCommand("addchamber", Command{handler: addChamber})
-	addCommand("removechamber", Command{handler: removeChamber})
-	addCommand("list", Command{handler: list})
+	addCommand("ping", CMD_PING)
+	addCommand("addchamber", CMD_ADD_CHAMBER)
+	addCommand("removechamber", CMD_REMOVE_CHAMBER)
+	addCommand("list", CMD_LIST)
+	addCommand("help", CMD_HELP)
 
 	// Start the bot
 	if err = dg.Open(); err != nil {
@@ -161,21 +181,16 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 	cmdstr := strings.Split(m.Content, " ")[0]
 
-	if cmd, ok := Commands[cmdstr]; ok {
-		// Redirect data to command handler when appropriate
+	// Take out the command prefix and break early if it's not present.
+	if len(cmdstr) <= len(PREFIX) {
+		return
+	}
 
-		if ch, err := s.Channel(m.ChannelID); err != nil {
-			log.Println(m.Author, "sent command", m.Content)
-		} else {
-			// This logically shouldn't happen, but just in case!
-			log.Println(m.Author, "from", "#"+ch.Name, "sent command", m.Content)
-		}
-
-		if err := cmd.handler(s, m); err != nil {
-			log.Println("Error processing command:", err)
-		}
+	if cmdstr[:len(PREFIX)] == PREFIX {
+		// Prefix matches; it's a command.
+		cmdstr = cmdstr[len(PREFIX):]
 	} else if await, ok := Awaits[m.ChannelID]; ok {
-		// Redirect data to handler to await if it exists and not a command.
+		// Not a command; redirect message to channel's await if it exists.
 
 		if ch, err := s.Channel(m.ChannelID); err != nil {
 			log.Println(m.Author, "triggered await in #"+ch.Name)
@@ -186,10 +201,63 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		if err := await.handler(s, m); err != nil {
 			log.Println("Error for await:", err)
 		}
+
+		return
+	}
+
+	if ch, err := s.Channel(m.ChannelID); err != nil {
+		log.Println(m.Author, "sent command", m.Content)
+	} else {
+		// This logically shouldn't happen, but just in case!
+		log.Println(m.Author, "from", "#"+ch.Name, "sent command", m.Content)
+	}
+
+	if cmd, ok := Commands[cmdstr]; ok {
+		// Redirect data to command handler when appropriate
+		if err := cmd.Handler(s, m); err != nil {
+			log.Println("Error processing command:", err)
+		}
+	} else {
+		log.Println("Command '" + cmdstr + "' doesn't exist")
 	}
 }
 
 func ping(s *discordgo.Session, m *discordgo.MessageCreate) error {
 	_, err := s.ChannelMessageSend(m.ChannelID, "Pong!")
 	return err
+}
+
+func help(s *discordgo.Session, m *discordgo.MessageCreate) error {
+	args := strings.Split(m.Content, " ")
+	var err error
+
+	if len(args) > 2 {
+		_, err = s.ChannelMessageSend(m.ChannelID, MSG_TOO_MANY_ARGS)
+		return err
+	}
+
+	if len(args) == 2 {
+		// Has argument for command.
+		cmdname := args[1]
+		if cmd, ok := Commands[cmdname]; ok {
+			// Command exists.
+			_, err = s.ChannelMessageSend(m.ChannelID,
+				"**`"+cmdname+"`**: "+cmd.Summary+"\n"+
+					"Usage: `"+PREFIX+cmdname+" "+cmd.Usage+"`")
+		} else {
+			// Command doesn't exist
+			_, err = s.ChannelMessageSend(m.ChannelID,
+				"Command **`"+cmdname+"`** doesn't exist.")
+		}
+	} else {
+		response := "Commands:"
+		// List all commands
+		for cmdname, _ := range Commands {
+			response += " `" + cmdname + "`"
+		}
+
+		_, err = s.ChannelMessageSend(m.ChannelID, response)
+	}
+
+	return nil
 }

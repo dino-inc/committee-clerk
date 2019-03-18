@@ -10,7 +10,25 @@ import (
 )
 
 var (
-	ERR_NOT_A_CHAMBER = errors.New("No chamber is set up for this channel.")
+	ERR_NOT_A_CHAMBER = errors.New(MSG_NOT_A_CHAMBER)
+)
+
+var (
+	CMD_ADD_CHAMBER = Command{
+		Handler: addChamber,
+		Summary: "Add a chamber to the current channel",
+		Usage:   "<member role> <speaker role> [website id]",
+	}
+	CMD_REMOVE_CHAMBER = Command{
+		Handler: removeChamber,
+		Summary: "Remove the current channel's chamber",
+		Usage:   "",
+	}
+	CMD_LIST = Command{
+		Handler: list,
+		Summary: "List all members in the channel's chamber",
+		Usage:   "",
+	}
 )
 
 func isChamber(channelID string) bool {
@@ -77,13 +95,13 @@ func addChamber(s *discordgo.Session, m *discordgo.MessageCreate) error {
 	}
 
 	if len(args) < 3 {
-		_, err := s.ChannelMessageSend(m.ChannelID, "Too few arguments.")
+		_, err := s.ChannelMessageSend(m.ChannelID, MSG_TOO_FEW_ARGS)
 		return err
 	} else if len(args) > 4 {
-		_, err := s.ChannelMessageSend(m.ChannelID, "Too many arguments.")
+		_, err := s.ChannelMessageSend(m.ChannelID, MSG_TOO_MANY_ARGS)
 		return err
 	} else if len(m.MentionRoles) != 2 {
-		_, err := s.ChannelMessageSend(m.ChannelID, "Invalid arguments.")
+		_, err := s.ChannelMessageSend(m.ChannelID, MSG_BAD_ARGS)
 		return err
 	}
 
