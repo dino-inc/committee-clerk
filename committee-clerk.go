@@ -157,6 +157,12 @@ func main() {
 	addCommand("dismiss", CMD_DISMISS)
 	addCommand("adjournsinedie", CMD_ADJOURNSINEDIE)
 
+	addCommand("call", CMD_CALL)
+	addCommand("endvoting", CMD_ENDVOTING)
+	addCommand("cast", CMD_CAST)
+	addCommand("getvotes", CMD_GETVOTES)
+	addCommand("setvotes", CMD_SETVOTES)
+
 	// Start the bot
 	if err = dg.Open(); err != nil {
 		log.Fatal("error opening connection,", err)
