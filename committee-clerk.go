@@ -187,18 +187,16 @@ func main() {
 // Return the command parsed from a string if it exists
 func getCommand(content string) (Command, bool) {
 	cmdstr := strings.Split(content, " ")[0]
-	if len(cmdstr) <= len(PREFIX) {
+	if !strings.HasPrefix(cmdstr, PREFIX) {
 		return Command{}, false
 	}
 
-	if cmdstr[:len(PREFIX)] == PREFIX {
-		cmdstr = cmdstr[len(PREFIX):]
+	cmd, ok := Commands[strings.TrimPrefix(cmdstr, PREFIX)]
+	if ok {
+		return cmd, true
 	} else {
 		return Command{}, false
 	}
-
-	cmd, ok := Commands[cmdstr]
-	return cmd, ok
 }
 
 // Called every time a new message appears.

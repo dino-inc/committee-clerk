@@ -83,6 +83,19 @@ type Vote int
 
 var RollCalls = make(map[string]*RollCall)
 
+func (v Vote) String() string {
+	switch v {
+	case For:
+		return "Aye"
+	case Against:
+		return "Against"
+	case Abstained:
+		return "Abstained"
+	default:
+		return "???"
+	}
+}
+
 type RollCall struct {
 	votes    map[string]Vote // Map from UserID to vote
 	members  []string        // List of UserID's of chamber members since the start of the vote
@@ -90,6 +103,28 @@ type RollCall struct {
 	timedOut bool
 	passNum  int
 	passDen  int
+	active   bool
+}
+
+// Return whether a roll call vote is active in the given channel.
+func isActiveRollCall(channelID string) bool {
+	rollCall, ok := RollCalls[channelID]
+	if !ok {
+		return false
+	} else {
+		return rollCall.active
+	}
+}
+
+// Return whethera memberID matches a voting member in the roll call vote.
+func (r RollCall) isMember(memberID string) bool {
+	for _, member := range r.members {
+		if memberID == member {
+			return true
+		}
+	}
+
+	return false
 }
 
 // Return a string fraction of the voting requirements
@@ -102,30 +137,35 @@ func (r RollCall) QuorumMet() bool {
 	return len(r.votes) >= r.quorum
 }
 
-func parseVote(content string) (Vote, bool) {
+// Interprets a string content and gives the corresponding vote. If s
+// contains an invalid phrase, it instead returns strconv.ErrSyntax
+// and -1 as a vote.
+func parseVote(content string) (Vote, error) {
 	content = strings.ToLower(content)
 
 	for _, aye := range VOTE_FOR {
 		if strings.HasPrefix(content, aye) {
-			return For, true
+			return For, nil
 		}
 	}
 
 	for _, nay := range VOTE_AGAINST {
 		if strings.HasPrefix(content, nay) {
-			return Against, true
+			return Against, nil
 		}
 	}
 
 	for _, present := range VOTE_ABSTAINED {
 		if strings.HasPrefix(content, present) {
-			return Abstained, true
+			return Abstained, nil
 		}
 	}
 
-	return -1, false
+	return -1, strconv.ErrSyntax
 }
 
+// Stop the roll call vote, remove its associated await, and return
+// whether successful and any corresponding errors.
 func stopRollCall(s *discordgo.Session, channelID string) (bool, error) {
 	if ok := removeAwait(channelID, AWAIT_CALL_ID); !ok {
 		return false, nil
@@ -140,6 +180,8 @@ func stopRollCall(s *discordgo.Session, channelID string) (bool, error) {
 		total        = len(rollCall.votes)
 		passReq      = float64(rollCall.passNum) / float64(rollCall.passDen)
 	)
+
+	rollCall.active = false
 
 	for _, vote := range rollCall.votes {
 		switch vote {
@@ -158,7 +200,7 @@ func stopRollCall(s *discordgo.Session, channelID string) (bool, error) {
 		motionPassed = false
 	}
 
-	reply := "The yeas and nays are " +
+	reply := "The Yeas and Nays are " +
 		strconv.Itoa(ayes) + " - " + strconv.Itoa(nays)
 	if absents > 0 {
 		reply += " with " + strconv.Itoa(absents) + " absentions"
@@ -182,6 +224,10 @@ func cmdCall(s *discordgo.Session, m *discordgo.MessageCreate) error {
 		passDen  = PassDenDefault
 		duration = -1
 	)
+
+	if ok, err := checkAuthorIsSpeaker(s, m); !ok {
+		return err
+	}
 
 	if len(args) > 4 {
 		_, err := s.ChannelMessageSend(m.ChannelID, MSG_TOO_MANY_ARGS)
@@ -261,6 +307,7 @@ func cmdCall(s *discordgo.Session, m *discordgo.MessageCreate) error {
 		timedOut: false,
 		passNum:  passNum,
 		passDen:  passDen,
+		active:   true,
 	}
 	RollCalls[m.ChannelID] = &rollCall
 
@@ -312,18 +359,10 @@ func awaitCall(s *discordgo.Session, m *discordgo.MessageCreate) error {
 	rollCall := RollCalls[m.ChannelID]
 	var err error
 
-	isMember := false
-	for _, memberID := range rollCall.members {
-		if m.Author.ID == memberID {
-			isMember = true
-			break
-		}
-	}
-
 	// Add a vote to the roster if they're a member.
-	if isMember {
-		vote, isVote := parseVote(m.Content)
-		if isVote {
+	if rollCall.isMember(m.Author.ID) {
+		vote, err := parseVote(m.Content)
+		if err == nil {
 			rollCall.votes[m.Author.ID] = vote
 
 			err = s.MessageReactionAdd(m.ChannelID, m.ID, VOTE_REACTS[vote])
@@ -340,7 +379,70 @@ func awaitCall(s *discordgo.Session, m *discordgo.MessageCreate) error {
 	return err
 }
 
+func cmdCast(s *discordgo.Session, m *discordgo.MessageCreate) error {
+	if ok, err := checkAuthorIsSpeaker(s, m); !ok {
+		return err
+	}
+
+	args := strings.Split(m.Content, " ")
+	if len(args) > 3 {
+		_, err := s.ChannelMessageSend(m.ChannelID, MSG_TOO_MANY_ARGS)
+		return err
+	} else if len(args) < 3 {
+		_, err := s.ChannelMessageSend(m.ChannelID, MSG_TOO_FEW_ARGS)
+		return err
+	} else if len(m.Mentions) != 1 {
+		_, err := s.ChannelMessageSend(m.ChannelID, MSG_BAD_ARGS)
+		return err
+	}
+
+	voteString := args[2]
+	vote, err := parseVote(voteString)
+	if err != nil {
+		_, err := s.ChannelMessageSend(m.ChannelID, "'"+voteString+"' is not a valid vote.")
+		return err
+	}
+
+	if !isActiveRollCall(m.ChannelID) {
+		_, err := s.ChannelMessageSend(m.ChannelID, MSG_NO_CALL)
+		return err
+	}
+
+	rollCall := RollCalls[m.ChannelID]
+	castee := m.Mentions[0]
+
+	if rollCall.isMember(castee.ID) {
+		rollCall.votes[castee.ID] = vote
+		_, err := s.ChannelMessageSend(m.ChannelID, "Recorded '"+vote.String()+
+			"' for "+castee.Username+".")
+		return err
+	} else {
+		_, err := s.ChannelMessageSend(m.ChannelID, castee.Username+" is not a voting member.")
+		return err
+	}
+}
+
+func cmdSetVotes(s *discordgo.Session, m *discordgo.MessageCreate) error {
+	if ok, err := checkAuthorIsSpeaker(s, m); !ok {
+		return err
+	}
+
+	return nil
+}
+
+func cmdGetVotes(s *discordgo.Session, m *discordgo.MessageCreate) error {
+	if ok, err := checkAuthorIsSpeaker(s, m); !ok {
+		return err
+	}
+
+	return nil
+}
+
 func cmdEndVoting(s *discordgo.Session, m *discordgo.MessageCreate) error {
+	if ok, err := checkAuthorIsSpeaker(s, m); !ok {
+		return err
+	}
+
 	ok, err := stopRollCall(s, m.ChannelID)
 	if err != nil {
 		return err
@@ -351,16 +453,4 @@ func cmdEndVoting(s *discordgo.Session, m *discordgo.MessageCreate) error {
 	}
 
 	return err
-}
-
-func cmdCast(s *discordgo.Session, m *discordgo.MessageCreate) error {
-	return nil
-}
-
-func cmdSetVotes(s *discordgo.Session, m *discordgo.MessageCreate) error {
-	return nil
-}
-
-func cmdGetVotes(s *discordgo.Session, m *discordgo.MessageCreate) error {
-	return nil
 }
