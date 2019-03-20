@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"github.com/bwmarrin/discordgo"
 	"math"
 	"strconv"
@@ -15,8 +16,9 @@ const (
 )
 
 const (
-	AWAIT_CALL_ID = "call"
-	MSG_NO_CALL   = "There is no active roll call vote"
+	AWAIT_CALL_ID      = "call"
+	MSG_NO_CALL        = "There is no active roll call vote"
+	MSG_NO_RECENT_CALL = "There hasn't been any recent roll call vote"
 
 	PassNumDefault = 1
 	PassDenDefault = 2
@@ -86,7 +88,7 @@ var RollCalls = make(map[string]*RollCall)
 func (v Vote) String() string {
 	switch v {
 	case For:
-		return "Aye"
+		return "For"
 	case Against:
 		return "Against"
 	case Abstained:
@@ -164,6 +166,21 @@ func parseVote(content string) (Vote, error) {
 	return -1, strconv.ErrSyntax
 }
 
+func (r *RollCall) countVotes() (ayes int, nays int, absents int) {
+	for _, vote := range r.votes {
+		switch vote {
+		case For:
+			ayes++
+		case Against:
+			nays++
+		case Abstained:
+			absents++
+		}
+	}
+
+	return ayes, nays, absents
+}
+
 // Stop the roll call vote, remove its associated await, and return
 // whether successful and any corresponding errors.
 func stopRollCall(s *discordgo.Session, channelID string) (bool, error) {
@@ -174,25 +191,12 @@ func stopRollCall(s *discordgo.Session, channelID string) (bool, error) {
 	var (
 		rollCall     = RollCalls[channelID]
 		motionPassed = true
-		ayes         = 0
-		nays         = 0
-		absents      = 0
 		total        = len(rollCall.votes)
 		passReq      = float64(rollCall.passNum) / float64(rollCall.passDen)
 	)
 
 	rollCall.active = false
-
-	for _, vote := range rollCall.votes {
-		switch vote {
-		case For:
-			ayes++
-		case Against:
-			nays++
-		case Abstained:
-			absents++
-		}
-	}
+	ayes, nays, absents := rollCall.countVotes()
 
 	if len(rollCall.votes) == 0 {
 		motionPassed = false
@@ -427,15 +431,62 @@ func cmdSetVotes(s *discordgo.Session, m *discordgo.MessageCreate) error {
 		return err
 	}
 
-	return nil
-}
-
-func cmdGetVotes(s *discordgo.Session, m *discordgo.MessageCreate) error {
-	if ok, err := checkAuthorIsSpeaker(s, m); !ok {
+	if ok, err := checkArgRange(s, m, 2, 2); !ok {
 		return err
 	}
 
-	return nil
+	var num, den int
+	var err error
+	args := strings.Split(m.Content, " ")
+
+	num, err = strconv.Atoi(args[1])
+	if err != nil {
+		_, err = s.ChannelMessageSend(m.ChannelID, MSG_BAD_ARGS)
+		return err
+	}
+
+	den, err = strconv.Atoi(args[2])
+	if err != nil {
+		_, err = s.ChannelMessageSend(m.ChannelID, MSG_BAD_ARGS)
+		return err
+	}
+
+	rollCall := RollCalls[m.ChannelID]
+	rollCall.passNum = num
+	rollCall.passDen = den
+
+	_, err = s.ChannelMessageSend(m.ChannelID,
+		rollCall.PassReqtoa()+" will require to vote in the affirmative to pass the motion.")
+	return err
+}
+
+func cmdGetVotes(s *discordgo.Session, m *discordgo.MessageCreate) error {
+	rollCall, ok := RollCalls[m.ChannelID]
+	if !ok {
+		_, err := s.ChannelMessageSend(m.ChannelID, MSG_NO_RECENT_CALL)
+		return err
+	}
+
+	ayes, nays, absents := rollCall.countVotes()
+	content := "*The Yeas and Nays "
+	if rollCall.active {
+		content += "are currently "
+	} else {
+		content += "were "
+	}
+	content += fmt.Sprintf("%d - %d with %d absentions:*\n\n", ayes, nays, absents)
+
+	for userID, vote := range rollCall.votes {
+		user, err := s.User(userID)
+		if err != nil {
+			return err
+		}
+
+		content += user.Username + ": " + vote.String() + "\n"
+	}
+
+	_, err := s.ChannelMessageSend(m.ChannelID, content)
+	return err
 }
 
 func cmdEndVoting(s *discordgo.Session, m *discordgo.MessageCreate) error {

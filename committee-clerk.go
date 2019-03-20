@@ -27,6 +27,8 @@ const (
 	MSG_BAD_ARGS             = "Invalid arguments."
 	MSG_MUST_MANAGE_CHANNELS = "You need permission to Manage Channels to do that."
 	MSG_NOT_A_CHAMBER        = "No chamber is set up for this channel."
+
+	ARGS_NO_LIMIT = -1
 )
 
 // Provided by auth.json
@@ -119,6 +121,21 @@ func loadSettings(dest interface{}, src string) error {
 	}
 
 	return nil
+}
+
+// Return whether the arguments are within range, and send an error
+// message if it isn't.
+func checkArgRange(s *discordgo.Session, m *discordgo.MessageCreate, argMin int, argMax int) (bool, error) {
+	args := strings.Split(m.Content, " ")
+	if len(args)-1 < argMin {
+		_, err := s.ChannelMessageSend(m.ChannelID, MSG_TOO_FEW_ARGS)
+		return false, err
+	} else if argMax != ARGS_NO_LIMIT && len(args)-1 > argMax {
+		_, err := s.ChannelMessageSend(m.ChannelID, MSG_TOO_MANY_ARGS)
+		return false, err
+	}
+
+	return true, nil
 }
 
 func main() {
@@ -241,12 +258,11 @@ func help(s *discordgo.Session, m *discordgo.MessageCreate) error {
 	args := strings.Split(m.Content, " ")
 	var err error
 
-	if len(args) > 2 {
-		_, err = s.ChannelMessageSend(m.ChannelID, MSG_TOO_MANY_ARGS)
+	if ok, err := checkArgRange(s, m, 0, 1); !ok {
 		return err
 	}
 
-	if len(args) == 2 {
+	if len(args)-1 == 1 {
 		// Has argument for command.
 		cmdname := args[1]
 		if cmd, ok := Commands[cmdname]; ok {
@@ -269,5 +285,5 @@ func help(s *discordgo.Session, m *discordgo.MessageCreate) error {
 		_, err = s.ChannelMessageSend(m.ChannelID, response)
 	}
 
-	return nil
+	return err
 }

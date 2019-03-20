@@ -95,14 +95,12 @@ func addChamber(s *discordgo.Session, m *discordgo.MessageCreate) error {
 		return err
 	}
 
+	if ok, err := checkArgRange(s, m, 2, 3); !ok {
+		return err
+	}
+
 	args := strings.Split(m.Content, " ")
-	if len(args) < 3 {
-		_, err := s.ChannelMessageSend(m.ChannelID, MSG_TOO_FEW_ARGS)
-		return err
-	} else if len(args) > 4 {
-		_, err := s.ChannelMessageSend(m.ChannelID, MSG_TOO_MANY_ARGS)
-		return err
-	} else if len(m.MentionRoles) != 2 {
+	if len(m.MentionRoles) != 2 {
 		_, err := s.ChannelMessageSend(m.ChannelID, MSG_BAD_ARGS)
 		return err
 	}
@@ -218,8 +216,7 @@ func add(s *discordgo.Session, m *discordgo.MessageCreate) error {
 		return err
 	}
 
-	if len(m.Mentions) == 0 {
-		_, err := s.ChannelMessageSend(m.ChannelID, MSG_TOO_FEW_ARGS)
+	if ok, err := checkArgRange(s, m, 0, ARGS_NO_LIMIT); !ok {
 		return err
 	}
 
@@ -253,8 +250,7 @@ func remove(s *discordgo.Session, m *discordgo.MessageCreate) error {
 		return err
 	}
 
-	if len(m.Mentions) == 0 {
-		_, err := s.ChannelMessageSend(m.ChannelID, MSG_TOO_FEW_ARGS)
+	if ok, err := checkArgRange(s, m, 0, ARGS_NO_LIMIT); !ok {
 		return err
 	}
 
