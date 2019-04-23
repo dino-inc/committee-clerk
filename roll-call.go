@@ -16,9 +16,11 @@ const (
 )
 
 const (
-	AWAIT_CALL_ID      = "call"
-	MSG_NO_CALL        = "There is no active roll call vote"
-	MSG_NO_RECENT_CALL = "There hasn't been any recent roll call vote"
+	AWAIT_CALL_ID         = "call"
+	MSG_NO_CALL           = "There is no active roll call vote"
+	MSG_NO_RECENT_CALL    = "There hasn't been any recent roll call vote"
+	MSG_CALL_STILL_ACTIVE = "The roll call vote is still active"
+	MSG_CALL_RESUMED      = "The roll call vote has been resumed"
 
 	PassNumDefault = 1
 	PassDenDefault = 2
@@ -33,6 +35,10 @@ var (
 	CMD_ENDVOTING = Command{
 		Handler: cmdEndVoting,
 		Summary: "Stop the chamber's roll-call vote early",
+	}
+	CMD_RESUMEVOTING = Command{
+		Handler: cmdResumeVoting,
+		Summary: "Resume a previously stopped roll-call vote",
 	}
 	CMD_CAST = Command{
 		Handler: cmdCast,
@@ -99,13 +105,13 @@ func (v Vote) String() string {
 }
 
 type RollCall struct {
-	votes    map[string]Vote // Map from UserID to vote
-	members  []string        // List of UserID's of chamber members since the start of the vote
-	quorum   int             // Pre-calculated minimum number of votes to call quorum
-	timedOut bool
-	passNum  int
-	passDen  int
-	active   bool
+	votes       map[string]Vote // Map from UserID to vote
+	members     []string        // List of UserID's of chamber members since the start of the vote
+	quorum      int             // Pre-calculated minimum number of votes to call quorum
+	timerActive bool
+	passNum     int
+	passDen     int
+	active      bool
 }
 
 // Return whether a roll call vote is active in the given channel.
@@ -305,13 +311,13 @@ func cmdCall(s *discordgo.Session, m *discordgo.MessageCreate) error {
 
 	// Store roll call data.
 	rollCall := RollCall{
-		votes:    make(map[string]Vote),
-		members:  memberIDs,
-		quorum:   int(math.Floor(float64(len(members))/2.0)) + 1,
-		timedOut: false,
-		passNum:  passNum,
-		passDen:  passDen,
-		active:   true,
+		votes:       make(map[string]Vote),
+		members:     memberIDs,
+		quorum:      int(math.Floor(float64(len(members))/2.0)) + 1,
+		timerActive: duration > 0,
+		passNum:     passNum,
+		passDen:     passDen,
+		active:      true,
 	}
 	RollCalls[m.ChannelID] = &rollCall
 
@@ -339,10 +345,16 @@ func cmdCall(s *discordgo.Session, m *discordgo.MessageCreate) error {
 		content += "vote is on."
 	}
 
-	if duration > 0 {
+	if rollCall.timerActive {
 		go func() {
 			time.Sleep(time.Duration(duration) * time.Minute)
-			rollCall.timedOut = true
+
+			if !rollCall.timerActive {
+				// Roll call has been restarted
+				return
+			}
+
+			rollCall.timerActive = false
 
 			if rollCall.QuorumMet() {
 				stopRollCall(s, m.ChannelID)
@@ -376,7 +388,7 @@ func awaitCall(s *discordgo.Session, m *discordgo.MessageCreate) error {
 		}
 	}
 
-	if rollCall.timedOut && rollCall.QuorumMet() {
+	if !rollCall.timerActive && rollCall.QuorumMet() {
 		_, err = stopRollCall(s, m.ChannelID)
 	}
 
@@ -503,5 +515,28 @@ func cmdEndVoting(s *discordgo.Session, m *discordgo.MessageCreate) error {
 		_, err = s.ChannelMessageSend(m.ChannelID, MSG_NO_CALL)
 	}
 
+	return err
+}
+
+func cmdResumeVoting(s *discordgo.Session, m *discordgo.MessageCreate) error {
+	rollCall, ok := RollCalls[m.ChannelID]
+	if !ok {
+		_, err := s.ChannelMessageSend(m.ChannelID, MSG_NO_RECENT_CALL)
+		return err
+	}
+
+	if rollCall.active {
+		_, err := s.ChannelMessageSend(m.ChannelID, MSG_CALL_STILL_ACTIVE)
+		return err
+	}
+
+	rollCall.active = true
+	rollCall.timerActive = false
+
+	if ok, err := addAwait(m.ChannelID, s, AWAIT_CALL); !ok {
+		return err
+	}
+
+	_, err := s.ChannelMessageSend(m.ChannelID, MSG_CALL_RESUMED)
 	return err
 }

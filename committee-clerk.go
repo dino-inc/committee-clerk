@@ -35,6 +35,9 @@ const (
 type AuthSettings struct {
 	Token    string
 	ClientID int
+	OwnerID  string
+	WebToken string
+	BaseUri  string
 }
 
 type Handler func(*discordgo.Session, *discordgo.MessageCreate) error
@@ -69,6 +72,7 @@ var (
 var Commands = make(map[string]Command)
 var Awaits = make(map[string]Await)
 var Chambers map[string]Chamber
+var Auth AuthSettings
 
 // Add a command to the bot.
 func addCommand(name string, cmd Command) {
@@ -145,13 +149,12 @@ func main() {
 	}
 
 	// Load auth settings.
-	var auth AuthSettings
-	if err := loadSettings(&auth, AUTH_PATH); err != nil {
+	if err := loadSettings(&Auth, AUTH_PATH); err != nil {
 		log.Fatal(err)
 	}
 
 	// Setup the bot.
-	dg, err := discordgo.New("Bot " + auth.Token)
+	dg, err := discordgo.New("Bot " + Auth.Token)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -176,9 +179,13 @@ func main() {
 
 	addCommand("call", CMD_CALL)
 	addCommand("endvoting", CMD_ENDVOTING)
+	addCommand("resumevoting", CMD_RESUMEVOTING)
 	addCommand("cast", CMD_CAST)
 	addCommand("getvotes", CMD_GETVOTES)
 	addCommand("setvotes", CMD_SETVOTES)
+
+	addCommand("apiping", CMD_APIPING)
+	addCommand("addtodocket", CMD_ADD_DOCKET_ITEM)
 
 	// Start the bot
 	if err = dg.Open(); err != nil {
@@ -189,7 +196,7 @@ func main() {
 	fmt.Println("Committee clerk is now running. Press CTRL-C to exit.")
 	fmt.Println("Invite the Committee Clerk with this url:")
 	fmt.Println("https://discordapp.com/oauth2/authorize?client_id=" +
-		strconv.Itoa(auth.ClientID) + "&permissions=268445776&scope=bot")
+		strconv.Itoa(Auth.ClientID) + "&permissions=268445776&scope=bot")
 	sc := make(chan os.Signal, 1)
 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt, os.Kill)
 	<-sc
