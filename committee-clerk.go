@@ -186,6 +186,7 @@ func main() {
 
 	addCommand("apiping", CMD_APIPING)
 	addCommand("addtodocket", CMD_ADD_DOCKET_ITEM)
+	addCommand("readitem", CMD_READ_DOCKETED_ITEM)
 
 	// Start the bot
 	if err = dg.Open(); err != nil {
