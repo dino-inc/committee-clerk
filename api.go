@@ -31,7 +31,12 @@ var (
 	CMD_READ_DOCKETED_ITEM = Command{
 		Handler: cmdReadDocketedItem,
 		Summary: "Read the docketed item, e.g. T.C.1",
-		Usage:   "<T.C.# | T.C.RES.# | T.C.MOTION.# | T.C.AMDT.# | T.C.CONF.#>",
+		Usage:   "<MOTION>",
+	}
+	CMD_COMMENT_DOCKETED_ITEM = Command{
+		Handler: cmdCommentDocketedItem,
+		Summary: "Set or remove the comment of the docketed item.",
+		Usage:   "<MOTION> [COMMENT...]",
 	}
 
 	AWAIT_ADD_DOCKET_ITEM = Await{
@@ -206,5 +211,34 @@ func cmdReadDocketedItem(s *discordgo.Session, m *discordgo.MessageCreate) error
 	}
 	_, err := s.ChannelMessageSend(m.ChannelID, message)
 
+	return err
+}
+
+func cmdCommentDocketedItem(s *discordgo.Session, m *discordgo.MessageCreate) error {
+	// First check if the user has permissions.
+	if ok, err := checkAuthorCanManageChannels(s, m); !ok {
+		return err
+	}
+
+	if ok, err := checkArgRange(s, m, 1, ARGS_NO_LIMIT); !ok {
+		return err
+	}
+
+	args := strings.Split(m.Content, " ")
+	comment := strings.Join(args[2:], " ")
+
+	if err := apiRequest(s, m, "docket/comment", url.Values{
+		"identifier": {args[1]},
+		"comment":    {comment},
+	}, nil); err != nil {
+		return err
+	}
+
+	message := "Added comment to " + args[1] + "."
+	if len(args) == 2 {
+		message = "Removed comment from " + args[1] + "."
+	}
+
+	_, err := s.ChannelMessageSend(m.ChannelID, message)
 	return err
 }
