@@ -38,6 +38,26 @@ var (
 		Summary: "Set or remove the comment of the docketed item.",
 		Usage:   "<MOTION> [COMMENT...]",
 	}
+	CMD_SET_ITEM_STATUS = Command{
+		Handler: cmdSetItemStatus,
+		Summary: "Change the status of the docketed item.",
+		Usage:   "<MOTION> <STATUS>",
+	}
+	CMD_PASS = Command{
+		Handler: cmdPass,
+		Summary: "Pass a docketed item.",
+		Usage:   "<MOTION>",
+	}
+	CMD_FAIL = Command{
+		Handler: cmdFail,
+		Summary: "Fail a docketed item.",
+		Usage:   "<MOTION>",
+	}
+	CMD_TABLE = Command{
+		Handler: cmdTable,
+		Summary: "Table a docketed item.",
+		Usage:   "<MOTION>",
+	}
 
 	AWAIT_ADD_DOCKET_ITEM = Await{
 		Handler: awaitAddToDocket,
@@ -130,7 +150,7 @@ func cmdApiPing(s *discordgo.Session, m *discordgo.MessageCreate) error {
 
 func cmdAddDocketItem(s *discordgo.Session, m *discordgo.MessageCreate) error {
 	// First check if the user has permissions.
-	if ok, err := checkAuthorCanManageChannels(s, m); !ok {
+	if ok, err := checkAuthorIsSpeaker(s, m); !ok {
 		return err
 	}
 
@@ -216,7 +236,7 @@ func cmdReadDocketedItem(s *discordgo.Session, m *discordgo.MessageCreate) error
 
 func cmdCommentDocketedItem(s *discordgo.Session, m *discordgo.MessageCreate) error {
 	// First check if the user has permissions.
-	if ok, err := checkAuthorCanManageChannels(s, m); !ok {
+	if ok, err := checkAuthorIsSpeaker(s, m); !ok {
 		return err
 	}
 
@@ -239,6 +259,104 @@ func cmdCommentDocketedItem(s *discordgo.Session, m *discordgo.MessageCreate) er
 		message = "Removed comment from " + args[1] + "."
 	}
 
+	_, err := s.ChannelMessageSend(m.ChannelID, message)
+	return err
+}
+
+func cmdSetItemStatus(s *discordgo.Session, m *discordgo.MessageCreate) error {
+	// First, check if the user has permissions.
+	if ok, err := checkAuthorIsSpeaker(s, m); !ok {
+		return err
+	}
+
+	if ok, err := checkArgRange(s, m, 2, 2); !ok {
+		return err
+	}
+
+	args := strings.Split(m.Content, " ")
+	identifier := args[1]
+	status := args[2]
+
+	if err := apiRequest(s, m, "docket/status", url.Values{
+		"identifier": {identifier},
+		"status":     {status},
+	}, nil); err != nil {
+		return err
+	}
+
+	message := identifier + " is now considered a(n) " + status + " matter."
+	_, err := s.ChannelMessageSend(m.ChannelID, message)
+	return err
+}
+
+func cmdPass(s *discordgo.Session, m *discordgo.MessageCreate) error {
+	if ok, err := checkAuthorIsSpeaker(s, m); !ok {
+		return err
+	}
+
+	if ok, err := checkArgRange(s, m, 1, 1); !ok {
+		return err
+	}
+
+	args := strings.Split(m.Content, " ")
+	identifier := args[1]
+
+	if err := apiRequest(s, m, "docket/status", url.Values{
+		"identifier": {identifier},
+		"status":     {"passed"},
+	}, nil); err != nil {
+		return err
+	}
+
+	message := identifier + " is now considered passed."
+	_, err := s.ChannelMessageSend(m.ChannelID, message)
+	return err
+}
+
+func cmdFail(s *discordgo.Session, m *discordgo.MessageCreate) error {
+	if ok, err := checkAuthorIsSpeaker(s, m); !ok {
+		return err
+	}
+
+	if ok, err := checkArgRange(s, m, 1, 1); !ok {
+		return err
+	}
+
+	args := strings.Split(m.Content, " ")
+	identifier := args[1]
+
+	if err := apiRequest(s, m, "docket/status", url.Values{
+		"identifier": {identifier},
+		"status":     {"failed"},
+	}, nil); err != nil {
+		return err
+	}
+
+	message := identifier + " is now considered failed."
+	_, err := s.ChannelMessageSend(m.ChannelID, message)
+	return err
+}
+
+func cmdTable(s *discordgo.Session, m *discordgo.MessageCreate) error {
+	if ok, err := checkAuthorIsSpeaker(s, m); !ok {
+		return err
+	}
+
+	if ok, err := checkArgRange(s, m, 1, 1); !ok {
+		return err
+	}
+
+	args := strings.Split(m.Content, " ")
+	identifier := args[1]
+
+	if err := apiRequest(s, m, "docket/status", url.Values{
+		"identifier": {identifier},
+		"status":     {"tabled"},
+	}, nil); err != nil {
+		return err
+	}
+
+	message := identifier + " is now considered tabled."
 	_, err := s.ChannelMessageSend(m.ChannelID, message)
 	return err
 }

@@ -188,6 +188,10 @@ func main() {
 	addCommand("addtodocket", CMD_ADD_DOCKET_ITEM)
 	addCommand("readitem", CMD_READ_DOCKETED_ITEM)
 	addCommand("commentitem", CMD_COMMENT_DOCKETED_ITEM)
+	addCommand("setstatus", CMD_SET_ITEM_STATUS)
+	addCommand("pass", CMD_PASS)
+	addCommand("fail", CMD_FAIL)
+	addCommand("table", CMD_TABLE)
 
 	// Start the bot
 	if err = dg.Open(); err != nil {
