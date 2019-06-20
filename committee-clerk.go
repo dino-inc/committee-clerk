@@ -192,6 +192,7 @@ func main() {
 	addCommand("pass", CMD_PASS)
 	addCommand("fail", CMD_FAIL)
 	addCommand("table", CMD_TABLE)
+	addCommand("delitem", CMD_DELITEM)
 
 	// Start the bot
 	if err = dg.Open(); err != nil {

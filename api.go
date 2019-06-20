@@ -15,6 +15,7 @@ import (
 
 const (
 	AWAIT_ADD_DOCKET_ITEM_ID = "addtodocket"
+	AWAIT_DELITEM_ID         = "delitem"
 )
 
 var (
@@ -58,11 +59,21 @@ var (
 		Summary: "Table a docketed item.",
 		Usage:   "<MOTION>",
 	}
+	CMD_DELITEM = Command{
+		Handler: cmdDelitem,
+		Summary: "Delete a docketed item.",
+		Usage:   "<MOTION>",
+	}
 
 	AWAIT_ADD_DOCKET_ITEM = Await{
 		Handler: awaitAddToDocket,
 		ID:      AWAIT_ADD_DOCKET_ITEM_ID,
 		AddErr:  "Someone is busy adding an item to the docket.",
+	}
+	AWAIT_DELITEM = Await{
+		Handler: awaitDelitem,
+		ID:      AWAIT_DELITEM_ID,
+		AddErr:  "Someone is busy deleting an item from the docket,",
 	}
 )
 
@@ -79,10 +90,22 @@ type Docket struct {
 	Identifier string `json:"identifier"`
 }
 
+const (
+	PENDINGITEM_DESC = iota
+	PENDINGITEM_CONF
+)
+
 type PendingDocketItem struct {
-	motionClass string
-	sponsorName string
-	speakerID   string
+	motionClass   string
+	sponsorName   string
+	speakerID     string
+	name          string
+	pendingStatus int
+}
+
+type PendingDeletion struct {
+	speakerID  string
+	identifier string
 }
 
 type DocketItem struct {
@@ -97,6 +120,27 @@ type DocketItem struct {
 }
 
 var DocketItems = make(map[string]*PendingDocketItem)
+var DocketDeletions = make(map[string]*PendingDeletion)
+
+func readDocketItem(s *discordgo.Session, m *discordgo.MessageCreate, identifier string) error {
+	var docketItem DocketItem
+	if err := apiRequest(s, m, "docket/read", url.Values{
+		"identifier": {identifier},
+	}, &docketItem); err != nil {
+		return err
+	}
+
+	message := fmt.Sprintf(
+		"__%s__ *(%s)*\n**Sponsor:** %s\n**Date:** %s\n\n```%s```",
+		docketItem.Identifier, docketItem.MotionStatus, docketItem.Sponsor,
+		docketItem.Date, docketItem.Name)
+	if docketItem.Comment != "" {
+		message += fmt.Sprintf("\n**Comment:**\n```%s```", docketItem.Comment)
+	}
+	_, err := s.ChannelMessageSend(m.ChannelID, message)
+
+	return err
+}
 
 func sendApiError(s *discordgo.Session, m *discordgo.MessageCreate, e error) error {
 	_, err := s.ChannelMessageSend(m.ChannelID, e.Error()+" <@"+Auth.OwnerID+">")
@@ -171,9 +215,10 @@ func cmdAddDocketItem(s *discordgo.Session, m *discordgo.MessageCreate) error {
 	}
 
 	DocketItems[m.ChannelID] = &PendingDocketItem{
-		motionClass: args[1],
-		sponsorName: sponsor.Username,
-		speakerID:   m.Author.ID,
+		motionClass:   args[1],
+		sponsorName:   sponsor.Username,
+		speakerID:     m.Author.ID,
+		pendingStatus: PENDINGITEM_DESC,
 	}
 
 	if ok, err := addAwait(m.ChannelID, s, AWAIT_ADD_DOCKET_ITEM); !ok {
@@ -185,27 +230,58 @@ func cmdAddDocketItem(s *discordgo.Session, m *discordgo.MessageCreate) error {
 }
 
 func awaitAddToDocket(s *discordgo.Session, m *discordgo.MessageCreate) error {
-	docketItem := DocketItems[m.ChannelID]
+	var docketItem *PendingDocketItem = DocketItems[m.ChannelID]
 	if m.Author.ID != docketItem.speakerID {
 		// Ignore if the speaker is not giving the bill description.
 		return nil
 	}
 
-	if ok := removeAwait(m.ChannelID, AWAIT_ADD_DOCKET_ITEM_ID); !ok {
-		return nil
-	}
+	switch docketItem.pendingStatus {
+	case PENDINGITEM_DESC:
+		docketItem.name = m.Content
+		docketItem.pendingStatus = PENDINGITEM_CONF
 
-	var docket Docket
-	if err := apiRequest(s, m, "docket/add", url.Values{
-		"motion":  {docketItem.motionClass},
-		"sponsor": {docketItem.sponsorName},
-		"name":    {m.Content},
-	}, &docket); err != nil {
+		_, err := s.ChannelMessageSend(m.ChannelID, "Does this look right to you? (aye/nay)")
+		return err
+	case PENDINGITEM_CONF:
+		vote, err := parseVote(m.Content)
+
+		if err != nil {
+			_, err = s.ChannelMessageSend(m.ChannelID, "That response doesn't make sense.")
+			return nil
+			return err
+		} else if vote == Abstained {
+			_, err = s.ChannelMessageSend(m.ChannelID, "An absention doesn't make sense here.")
+			return nil
+		} else if vote == For {
+			var docket Docket
+			if err := apiRequest(s, m, "docket/add", url.Values{
+				"motion":  {docketItem.motionClass},
+				"sponsor": {docketItem.sponsorName},
+				"name":    {docketItem.name},
+			}, &docket); err != nil {
+				return err
+			}
+
+			if ok := removeAwait(m.ChannelID, AWAIT_ADD_DOCKET_ITEM_ID); !ok {
+				return nil
+			}
+
+			_, err := s.ChannelMessageSend(m.ChannelID, "Item added and identified as "+docket.Identifier)
+			return err
+		} else {
+			if ok := removeAwait(m.ChannelID, AWAIT_ADD_DOCKET_ITEM_ID); !ok {
+				return nil
+			}
+
+			_, err := s.ChannelMessageSend(m.ChannelID, "Item ignored.")
+			return err
+
+		}
+	default:
+		_, err := s.ChannelMessageSend(m.ChannelID, "Sorry, something impossible happened. Ping the author, please!")
 		return err
 	}
-
-	_, err := s.ChannelMessageSend(m.ChannelID, "Item added and identified as "+docket.Identifier)
-	return err
 }
 
 func cmdReadDocketedItem(s *discordgo.Session, m *discordgo.MessageCreate) error {
@@ -214,24 +290,9 @@ func cmdReadDocketedItem(s *discordgo.Session, m *discordgo.MessageCreate) error
 	}
 
 	args := strings.Split(m.Content, " ")
+	identifier := args[1]
 
-	var docketItem DocketItem
-	if err := apiRequest(s, m, "docket/read", url.Values{
-		"identifier": {args[1]},
-	}, &docketItem); err != nil {
-		return err
-	}
-
-	message := fmt.Sprintf(
-		"__%s__ *(%s)*\n**Sponsor:** %s\n**Date:** %s\n\n```%s```",
-		docketItem.Identifier, docketItem.MotionStatus, docketItem.Sponsor,
-		docketItem.Date, docketItem.Name)
-	if docketItem.Comment != "" {
-		message += fmt.Sprintf("\n**Comment:**\n```%s```", docketItem.Comment)
-	}
-	_, err := s.ChannelMessageSend(m.ChannelID, message)
-
-	return err
+	return readDocketItem(s, m, identifier)
 }
 
 func cmdCommentDocketedItem(s *discordgo.Session, m *discordgo.MessageCreate) error {
@@ -359,4 +420,70 @@ func cmdTable(s *discordgo.Session, m *discordgo.MessageCreate) error {
 	message := identifier + " is now considered tabled."
 	_, err := s.ChannelMessageSend(m.ChannelID, message)
 	return err
+}
+
+func cmdDelitem(s *discordgo.Session, m *discordgo.MessageCreate) error {
+	if ok, err := checkAuthorIsSpeaker(s, m); !ok {
+		return err
+	}
+
+	if ok, err := checkArgRange(s, m, 1, 1); !ok {
+		return err
+	}
+
+	args := strings.Split(m.Content, " ")
+	identifier := args[1]
+
+	if err := readDocketItem(s, m, identifier); err != nil {
+		return err
+	}
+
+	if ok, err := addAwait(m.ChannelID, s, AWAIT_DELITEM); !ok {
+		return err
+	}
+
+	DocketDeletions[m.ChannelID] = &PendingDeletion{
+		speakerID:  m.Author.ID,
+		identifier: identifier,
+	}
+
+	_, err := s.ChannelMessageSend(m.ChannelID, "Are you sure you want to delete this docket item? (aye/nay)")
+	return err
+}
+
+func awaitDelitem(s *discordgo.Session, m *discordgo.MessageCreate) error {
+	deletion := DocketDeletions[m.ChannelID]
+	if m.Author.ID != deletion.speakerID {
+		// Ignore if the speaker is not confirming the motion deletion.
+		return nil
+	}
+
+	vote, err := parseVote(m.Content)
+	if err != nil {
+		_, err := s.ChannelMessageSend(m.ChannelID, "That response doesn't make sense.")
+		return err
+	} else if vote == Abstained {
+		_, err := s.ChannelMessageSend(m.ChannelID, "An absention doesn't make sense here.")
+		return err
+	} else if vote == For {
+		if ok := removeAwait(m.ChannelID, AWAIT_DELITEM_ID); !ok {
+			return nil
+		}
+
+		if err := apiRequest(s, m, "docket/delitem", url.Values{
+			"identifier": {deletion.identifier},
+		}, nil); err != nil {
+			return err
+		}
+
+		_, err := s.ChannelMessageSend(m.ChannelID, "Motion has been deleted.")
+		return err
+	} else {
+		if ok := removeAwait(m.ChannelID, AWAIT_DELITEM_ID); !ok {
+			return nil
+		}
+
+		_, err := s.ChannelMessageSend(m.ChannelID, "OK, ignoring request to delete item.")
+		return err
+	}
 }
