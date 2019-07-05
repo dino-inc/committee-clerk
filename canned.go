@@ -31,7 +31,7 @@ func canned(s *discordgo.Session, m *discordgo.MessageCreate) error {
 	phrase := args[1]
 	val, ok := Canned[phrase]
 	if ok {
-		_, err := s.ChannelMessageSend(m.ChannelID, "**"+val+":**\n\n"+val)
+		_, err := s.ChannelMessageSend(m.ChannelID, "**"+phrase+":**\n\n"+val)
 		return err
 	} else {
 		_, err := s.ChannelMessageSend(m.ChannelID, "'"+phrase+"' isn't a valid phrase")
