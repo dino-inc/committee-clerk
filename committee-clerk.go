@@ -20,6 +20,7 @@ const (
 	CHAMBER_PATH = "chambers.json"
 	AUTH_PATH    = "auth.json"
 	CLERK_PATH   = "clerks.json"
+	CANNED_PATH  = "canned.json"
 
 	REACT_OK = "\u2705"
 
@@ -73,7 +74,8 @@ var (
 // State
 var Commands = make(map[string]Command)
 var Awaits = make(map[string]Await)
-var Chambers map[string]Chamber
+var Chambers = make(map[string]Chamber)
+var Canned = make(map[string]string)
 var Clerks []string
 var Auth AuthSettings
 
@@ -160,6 +162,10 @@ func main() {
 		log.Fatal(err)
 	}
 
+	if err := loadSettings(&Canned, CANNED_PATH); err != nil {
+		log.Fatal(err)
+	}
+
 	// Setup the bot.
 	dg, err := discordgo.New("Bot " + Auth.Token)
 	if err != nil {
@@ -203,6 +209,8 @@ func main() {
 
 	addCommand("addclerk", CMD_ADDCLERK)
 	addCommand("removeclerk", CMD_REMOVECLERK)
+
+	addCommand("canned", CMD_CANNED)
 
 	// Start the bot
 	if err = dg.Open(); err != nil {
