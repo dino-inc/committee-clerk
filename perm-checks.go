@@ -64,3 +64,15 @@ func checkAuthorIsSpeaker(s *discordgo.Session, m *discordgo.MessageCreate) (boo
 	// Check if sender is a chamber speaker
 	return checkAuthorHasRole(s, m, chamber.SpeakerRole)
 }
+
+// Return true if the author is a clerk
+func checkAuthorIsClerk(s *discordgo.Session, m *discordgo.MessageCreate) (bool, error) {
+	for _, v := range Clerks {
+		if m.Author.ID == v {
+			return true, nil
+		}
+	}
+
+	_, err := s.ChannelMessageSend(m.ChannelID, MSG_NOT_A_CLERK)
+	return false, err
+}

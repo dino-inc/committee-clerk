@@ -194,7 +194,7 @@ func cmdApiPing(s *discordgo.Session, m *discordgo.MessageCreate) error {
 
 func cmdAddDocketItem(s *discordgo.Session, m *discordgo.MessageCreate) error {
 	// First check if the user has permissions.
-	if ok, err := checkAuthorIsSpeaker(s, m); !ok {
+	if ok, err := checkAuthorIsClerk(s, m); !ok {
 		return err
 	}
 
@@ -297,7 +297,7 @@ func cmdReadDocketedItem(s *discordgo.Session, m *discordgo.MessageCreate) error
 
 func cmdCommentDocketedItem(s *discordgo.Session, m *discordgo.MessageCreate) error {
 	// First check if the user has permissions.
-	if ok, err := checkAuthorIsSpeaker(s, m); !ok {
+	if ok, err := checkAuthorIsClerk(s, m); !ok {
 		return err
 	}
 
@@ -326,7 +326,7 @@ func cmdCommentDocketedItem(s *discordgo.Session, m *discordgo.MessageCreate) er
 
 func cmdSetItemStatus(s *discordgo.Session, m *discordgo.MessageCreate) error {
 	// First, check if the user has permissions.
-	if ok, err := checkAuthorIsSpeaker(s, m); !ok {
+	if ok, err := checkAuthorIsClerk(s, m); !ok {
 		return err
 	}
 
@@ -351,7 +351,7 @@ func cmdSetItemStatus(s *discordgo.Session, m *discordgo.MessageCreate) error {
 }
 
 func cmdPass(s *discordgo.Session, m *discordgo.MessageCreate) error {
-	if ok, err := checkAuthorIsSpeaker(s, m); !ok {
+	if ok, err := checkAuthorIsClerk(s, m); !ok {
 		return err
 	}
 
@@ -375,7 +375,7 @@ func cmdPass(s *discordgo.Session, m *discordgo.MessageCreate) error {
 }
 
 func cmdFail(s *discordgo.Session, m *discordgo.MessageCreate) error {
-	if ok, err := checkAuthorIsSpeaker(s, m); !ok {
+	if ok, err := checkAuthorIsClerk(s, m); !ok {
 		return err
 	}
 
@@ -399,7 +399,7 @@ func cmdFail(s *discordgo.Session, m *discordgo.MessageCreate) error {
 }
 
 func cmdTable(s *discordgo.Session, m *discordgo.MessageCreate) error {
-	if ok, err := checkAuthorIsSpeaker(s, m); !ok {
+	if ok, err := checkAuthorIsClerk(s, m); !ok {
 		return err
 	}
 
@@ -423,7 +423,7 @@ func cmdTable(s *discordgo.Session, m *discordgo.MessageCreate) error {
 }
 
 func cmdDelitem(s *discordgo.Session, m *discordgo.MessageCreate) error {
-	if ok, err := checkAuthorIsSpeaker(s, m); !ok {
+	if ok, err := checkAuthorIsClerk(s, m); !ok {
 		return err
 	}
 

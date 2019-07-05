@@ -19,6 +19,7 @@ const (
 
 	CHAMBER_PATH = "chambers.json"
 	AUTH_PATH    = "auth.json"
+	CLERK_PATH   = "clerks.json"
 
 	REACT_OK = "\u2705"
 
@@ -27,6 +28,7 @@ const (
 	MSG_BAD_ARGS             = "Invalid arguments."
 	MSG_MUST_MANAGE_CHANNELS = "You need permission to Manage Channels to do that."
 	MSG_NOT_A_CHAMBER        = "No chamber is set up for this channel."
+	MSG_NOT_A_CLERK          = "You are not an approved clerk."
 
 	ARGS_NO_LIMIT = -1
 )
@@ -72,6 +74,7 @@ var (
 var Commands = make(map[string]Command)
 var Awaits = make(map[string]Await)
 var Chambers map[string]Chamber
+var Clerks []string
 var Auth AuthSettings
 
 // Add a command to the bot.
@@ -124,7 +127,7 @@ func loadSettings(dest interface{}, src string) error {
 		return err
 	}
 
-	return nil
+	return file.Close()
 }
 
 // Return whether the arguments are within range, and send an error
@@ -150,6 +153,10 @@ func main() {
 
 	// Load auth settings.
 	if err := loadSettings(&Auth, AUTH_PATH); err != nil {
+		log.Fatal(err)
+	}
+
+	if err := loadSettings(&Clerks, CLERK_PATH); err != nil {
 		log.Fatal(err)
 	}
 
@@ -193,6 +200,9 @@ func main() {
 	addCommand("fail", CMD_FAIL)
 	addCommand("table", CMD_TABLE)
 	addCommand("delitem", CMD_DELITEM)
+
+	addCommand("addclerk", CMD_ADDCLERK)
+	addCommand("removeclerk", CMD_REMOVECLERK)
 
 	// Start the bot
 	if err = dg.Open(); err != nil {
