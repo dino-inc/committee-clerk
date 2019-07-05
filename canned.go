@@ -18,7 +18,7 @@ func canned(s *discordgo.Session, m *discordgo.MessageCreate) error {
 
 	args := strings.Split(m.Content, " ")
 
-	if len(m.MentionRoles) != 2 {
+	if len(args) != 2 {
 		response := "*Phrases:*\n"
 		for phrase, _ := range Canned {
 			response += "\n`" + phrase + "`"
