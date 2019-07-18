@@ -7,6 +7,7 @@ import (
 	"log"
 	"strconv"
 	"strings"
+	"sync"
 
 	"os"
 	"os/signal"
@@ -78,6 +79,7 @@ var Chambers = make(map[string]Chamber)
 var Canned = make(map[string]string)
 var Clerks []string
 var Auth AuthSettings
+var CommandMutex = &sync.Mutex{}
 
 // Add a command to the bot.
 func addCommand(name string, cmd Command) {
@@ -265,6 +267,9 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 			log.Println(m.Author, "sent command", m.Content)
 		}
 
+		CommandMutex.Lock()
+		defer CommandMutex.Unlock()
+
 		// Send data to command handler
 		if err := cmd.Handler(s, m); err != nil {
 			log.Println("Error processing command:", err)
@@ -277,6 +282,9 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		} else {
 			log.Println(m.Author, "triggered await in channel", m.ChannelID)
 		}
+
+		CommandMutex.Lock()
+		defer CommandMutex.Unlock()
 
 		if err := await.Handler(s, m); err != nil {
 			log.Println("Error for await:", err)
