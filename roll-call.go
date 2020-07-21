@@ -206,7 +206,7 @@ func stopRollCall(s *discordgo.Session, channelID string) (bool, error) {
 
 	if len(rollCall.votes) == 0 {
 		motionPassed = false
-	} else if float64(ayes)/float64(total) <= passReq {
+	} else if float64(ayes)/(float64(ayes)+float64(nays)) <= passReq {
 		motionPassed = false
 	}
 
